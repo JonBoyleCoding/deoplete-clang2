@@ -137,6 +137,7 @@ class Source(Base):
         self.sys_includes = {}
         self.darwin_version = 0
         self.last_neomake_flags = set()
+        self.compilation_database = ''
 
     def on_event(self, context, filename=''):
         if context['event'] == 'BufWritePost':
@@ -191,6 +192,23 @@ class Source(Base):
 
     def clean_flags(self, flags):
         if isinstance(flags, str):
+            cdb_re = r'compilation_database(?:\s)*=(?:\s)*([\"\'][^\"\']+[\"\']|\S*)'
+            cdb_match = re.search(cdb_re, flags)
+
+            if cdb_match:
+                span = cdb_match.span()
+                cdb = cdb_match.group(1)
+
+                if cdb.startswith('"') or cdb.startswith("'"):
+                    cdb = cdb[1:]
+
+                if cdb.endswith('"') or cdb.endswith("'"):
+                    cdb = cdb[:-1]
+
+                self.compilation_database = cdb
+                flags = flags[:span[0]] + flags[span[1]:]
+
+
             flags = shlex.split(flags, comments=True, posix=True)
 
         home = os.path.expanduser('~')
@@ -338,7 +356,11 @@ class Source(Base):
         if cwd in self.db_files:
             return self.db_files[cwd]['entries'].get(absname)
 
-        db_file = self.find_file(cwd, 'compile_commands.json')
+        if self.compilation_database != '':
+            db_file = self.compilation_database
+        else:
+            db_file = self.find_file(cwd, 'compile_commands.json')
+
         if db_file is None:
             return None
 
